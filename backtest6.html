@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>اختبار الأوزان — نظام الترقب</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0f1117;color:#e6edf3;font-family:Arial,sans-serif;font-size:13px;direction:rtl}
+header{background:#161b22;padding:10px 20px;border-bottom:1px solid #21262d;display:flex;align-items:center;justify-content:space-between}
+header h1{font-size:14px;font-weight:700}
+.badge{background:#d29922;color:#0f1117;font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px}
+
+/* Controls */
+.ctrl-bar{display:flex;gap:8px;align-items:center;padding:10px 16px;background:#0d1117;border-bottom:1px solid #21262d;flex-wrap:wrap}
+.dd-wrap{position:relative;display:inline-block}
+.dd-btn{background:#161b22;border:1px solid #30363d;border-radius:6px;padding:5px 12px;color:#e6edf3;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:6px}
+.dd-btn:hover{border-color:#58a6ff}
+.dd-menu{position:absolute;top:calc(100% + 4px);right:0;background:#161b22;border:1px solid #30363d;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.6);z-index:999;display:none;min-width:200px}
+.dd-menu.open{display:block}
+.dd-search{width:100%;background:#0d1117;border:none;border-bottom:1px solid #21262d;padding:7px 12px;color:#e6edf3;font-size:12px;direction:rtl}
+.dd-search:focus{outline:none}
+.dd-list{max-height:240px;overflow-y:auto}
+.dd-row{padding:6px 12px;cursor:pointer;font-size:12px;display:flex;justify-content:space-between;align-items:center}
+.dd-row:hover{background:#21262d}
+.dd-row.sel{background:#1f6feb22;color:#58a6ff}
+.tf-dd-item{display:flex;align-items:center;justify-content:space-between;padding:7px 12px;cursor:pointer;font-size:12px}
+.tf-dd-item:hover{background:#21262d}
+.tf-dd-item.on{color:#58a6ff;background:#0a1020}
+.run-btn{background:#26a641;border:none;border-radius:6px;padding:6px 18px;color:#0f1117;font-weight:700;font-size:12px;cursor:pointer}
+.run-btn:disabled{background:#444;color:#888;cursor:not-allowed}
+#statusBar{font-size:11px;color:#8b949e;padding:6px 16px;background:#0d1117;border-bottom:1px solid #21262d;min-height:28px}
+
+/* Metric cards */
+.metrics{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;padding:12px 16px}
+.mcard{background:#161b22;border:1px solid #21262d;border-radius:8px;padding:12px 14px}
+.ml{font-size:10px;color:#8b949e;margin-bottom:4px}
+.mv{font-size:22px;font-weight:700}
+.ms{font-size:10px;color:#8b949e;margin-top:2px}
+
+/* Chart */
+.section{padding:12px 16px;background:#0d1117;border-bottom:1px solid #21262d}
+.sec-title{font-size:11px;color:#8b949e;margin-bottom:10px;font-weight:700}
+.bars-wrap{display:flex;gap:6px;align-items:flex-end;height:100px;direction:ltr;padding:0 4px}
+.bar-col{display:flex;flex-direction:column;align-items:center;gap:4px;flex:1}
+.bar-fill{border-radius:3px 3px 0 0;width:100%;transition:height .3s}
+.bar-lbl{font-size:10px;color:#8b949e}
+.bar-pct{font-size:10px;font-weight:700}
+
+/* Table */
+.tbl-wrap{padding:12px 16px 20px;overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:11px}
+th{background:#161b22;color:#8b949e;padding:6px 8px;border:1px solid #21262d;font-weight:500;text-align:center}
+td{padding:5px 8px;border:1px solid #21262d;text-align:center}
+tr:hover td{background:#161b22}
+.G{color:#26a641;font-weight:700}
+.R{color:#da3633;font-weight:700}
+.Y{color:#d29922}
+.M{color:#8b949e}
+
+/* Progress */
+.prog-wrap{height:4px;background:#21262d;border-radius:2px;margin:6px 16px;display:none}
+.prog-bar{height:100%;background:#58a6ff;border-radius:2px;transition:width .3s}
+
+/* Empty state */
+.empty{text-align:center;padding:40px;color:#8b949e;font-size:13px}
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex;align-items:center;gap:8px">
+    <h1>🔬 اختبار دقة الأوزان — Backtest</h1>
+    <span class="badge">نظام الترقب</span>
+  </div>
+  <span style="font-size:11px;color:#8b949e" id="hdrNote">اختر شركة وإطار واضغط تشغيل</span>
+</header>
+
+<!-- Controls -->
+<div class="ctrl-bar">
+  <div class="dd-wrap" id="symWrap">
+    <button class="dd-btn" onclick="toggleDD('symDD','symSearch',renderSymList)">
+      <span id="symLabel">اختر شركة</span> ▾
+    </button>
+    <div class="dd-menu" id="symDD" style="width:260px">
+      <input class="dd-search" id="symSearch" placeholder="🔍 ابحث..." oninput="renderSymList()">
+      <div class="dd-list" id="symList"></div>
+    </div>
+  </div>
+
+  <div class="dd-wrap" id="tfWrap">
+    <button class="dd-btn" onclick="toggleDD('tfDD')">
+      <span id="tfLabel">يومي</span> ▾
+    </button>
+    <div class="dd-menu" id="tfDD" style="min-width:130px">
+      <div class="tf-dd-item on" onclick="selectTF('daily',this)">يومي <span style="color:#58a6ff">✓</span></div>
+      <div class="tf-dd-item" onclick="selectTF('weekly',this)">أسبوعي</div>
+      <div class="tf-dd-item" onclick="selectTF('monthly',this)">شهري</div>
+    </div>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:6px">
+    <span style="font-size:11px;color:#8b949e">الحد الأدنى:</span>
+    <select id="minBull" style="background:#161b22;border:1px solid #30363d;border-radius:5px;padding:4px 8px;color:#e6edf3;font-size:11px">
+      <option value="55">55%</option>
+      <option value="60" selected>60%</option>
+      <option value="65">65%</option>
+      <option value="70">70%</option>
+    </select>
+  </div>
+  <div style="display:flex;align-items:center;gap:6px">
+    <span style="font-size:11px;color:#8b949e">هدف TP:</span>
+    <select id="tpPct" style="background:#161b22;border:1px solid #30363d;border-radius:5px;padding:4px 8px;color:#e6edf3;font-size:11px">
+      <option value="4">4%</option>
+      <option value="6" selected>6%</option>
+      <option value="8">8%</option>
+      <option value="10">10%</option>
+    </select>
+  </div>
+  <div style="display:flex;align-items:center;gap:6px">
+    <span style="font-size:11px;color:#8b949e">وقف SL:</span>
+    <select id="slPct" style="background:#161b22;border:1px solid #30363d;border-radius:5px;padding:4px 8px;color:#e6edf3;font-size:11px">
+      <option value="3">3%</option>
+      <option value="5">5%</option>
+      <option value="6" selected>6%</option>
+      <option value="8">8%</option>
+    </select>
+  </div>
+  <div style="display:flex;align-items:center;gap:6px">
+    <span style="font-size:11px;color:#8b949e">مهلة قصوى:</span>
+    <select id="maxDays" style="background:#161b22;border:1px solid #30363d;border-radius:5px;padding:4px 8px;color:#e6edf3;font-size:11px">
+      <option value="10">10 أيام</option>
+      <option value="14" selected>14 أيام</option>
+      <option value="20">20 يوم</option>
+    </select>
+  </div>
+
+  <button class="run-btn" id="runBtn" onclick="runBacktest()" disabled>▶ تشغيل الاختبار</button>
+  <button class="run-btn" id="optBtn" onclick="runOptimal()" disabled style="background:#d29922;color:#0f1117">🔍 أمثل TP/SL</button>
+  <span style="font-size:11px;color:#8b949e" id="symCount"></span>
+</div>
+
+<div id="statusBar">جاري تحميل قائمة الشركات...</div>
+<div class="prog-wrap" id="progWrap"><div class="prog-bar" id="progBar" style="width:0%"></div></div>
+
+<!-- Metric cards -->
+<div class="metrics" id="metrics">
+  <div class="mcard"><div class="ml">إجمالي الإشارات</div><div class="mv M" id="mTotal">--</div><div class="ms">الإشارات التي تجاوزت الحد</div></div>
+  <div class="mcard"><div class="ml">نسبة الإصابة</div><div class="mv M" id="mHit">--</div><div class="ms" id="mHitSub">صح / إجمالي</div></div>
+  <div class="mcard"><div class="ml">متوسط الربح</div><div class="mv M" id="mProfit">--</div><div class="ms" id="mProfitSub">عند الإصابة (بعد 7 أيام)</div></div>
+  <div class="mcard"><div class="ml">متوسط الخسارة</div><div class="mv M" id="mLoss">--</div><div class="ms" id="mLossSub">عند الخطأ (بعد 7 أيام)</div></div>
+  <div class="mcard"><div class="ml">R:R الفعلي</div><div class="mv M" id="mRR">--</div><div class="ms">ربح ÷ خسارة</div></div>
+</div>
+
+<!-- Distribution Chart -->
+<!-- نتائج البحث الأمثل -->
+<div id="optSection" style="display:none;padding:12px 16px;background:#0d1117;border-bottom:1px solid #21262d">
+  <div class="sec-title" style="margin-bottom:8px;color:#d29922">🔍 نتائج البحث عن الـ TP/SL الأمثل</div>
+  <div id="optGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px"></div>
+</div>
+
+<div class="section">
+  <div class="sec-title">توزيع الإصابة حسب قوة الإشارة (bullPct)</div>
+  <div class="bars-wrap" id="distChart">
+    <div class="empty" style="width:100%;padding:20px">اضغط تشغيل لعرض النتائج</div>
+  </div>
+  <div style="display:flex;gap:16px;margin-top:8px;font-size:10px;color:#8b949e;justify-content:center;direction:ltr">
+    <span style="color:#26a641">■ إصابة عالية (+70%)</span>
+    <span style="color:#378ADD">■ إصابة متوسطة (50-70%)</span>
+    <span style="color:#da3633">■ إصابة منخفضة (-50%)</span>
+  </div>
+</div>
+
+<!-- Results Table -->
+<div class="tbl-wrap">
+  <div class="sec-title" style="margin-bottom:10px">تفاصيل كل إشارة</div>
+  <div id="tblWrap">
+    <div class="empty">لا توجد نتائج بعد — اضغط تشغيل الاختبار</div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════════
+// إعدادات API — نفس النظام الأساسي
+// ══════════════════════════════════════════════════════════════
+var SAHMK_KEY  = 'shmk_live_55565eee0274f91a2434bbee8a11a1e0e0c3e1e9448eaa74';
+var SAHMK_BASE = 'https://summer-base-6cf1.saleh-alradadi.workers.dev/proxy';
+var _selSym = null, _selTF = 'daily';
+var SYMS_META = {};
+
+// ══════════════════════════════════════════════════════════════
+// جلب قائمة الشركات
+// ══════════════════════════════════════════════════════════════
+async function sahmkFetch(endpoint) {
+  try {
+    var res = await fetch(SAHMK_BASE + endpoint, { headers: { 'X-API-Key': SAHMK_KEY } });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return await res.json();
+  } catch(e) { console.warn('API error:', e.message); return null; }
+}
+
+async function loadSymbols() {
+  document.getElementById('statusBar').textContent = '⏳ جاري تحميل قائمة الشركات من Sahmk...';
+  var data = await sahmkFetch('/stocks/?page_size=400');
+  if (data && data.results) {
+    data.results.forEach(function(s) {
+      var sym4 = String(s.symbol || s.ticker || '');
+      var name = s.name || s.company_name || sym4;
+      if (sym4) SYMS_META[sym4] = name;
+    });
+  }
+  // Fallback مدمج
+  var fallback = {'2222':'أرامكو السعودية','2010':'سابك','7010':'STC','1120':'الراجحي','2082':'أكوا باور','1010':'بنك الرياض','1020':'بنك الجزيرة','1050':'بنك البلاد','1060':'الأهلي','1080':'أنب','4002':'الاتصالات','4030':'موبايلي','2050':'سافكو','2150':'تحلية المياه','3007':'المراعي','3020':'سدافكو','6010':'التصنيع','4200':'ماء الوطن'};
+  Object.keys(fallback).forEach(function(k){ if(!SYMS_META[k]) SYMS_META[k]=fallback[k]; });
+  var cnt = Object.keys(SYMS_META).length;
+  document.getElementById('statusBar').textContent = '✅ تم تحميل ' + cnt + ' شركة — اختر شركة وإطار للبدء';
+  document.getElementById('symCount').textContent = cnt + ' شركة متاحة';
+  renderSymList();
+}
+
+// ══════════════════════════════════════════════════════════════
+// قوائم منسدلة
+// ══════════════════════════════════════════════════════════════
+function toggleDD(id, searchId, cb) {
+  var m = document.getElementById(id);
+  if (!m) return;
+  var wasOpen = m.classList.contains('open');
+  document.querySelectorAll('.dd-menu').forEach(function(x){ x.classList.remove('open'); });
+  if (!wasOpen) {
+    m.classList.add('open');
+    if (searchId) {
+      var s = document.getElementById(searchId);
+      if (s) { s.value = ''; s.focus(); }
+      if (cb) cb();
+    }
+  }
+}
+
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.dd-wrap')) {
+    document.querySelectorAll('.dd-menu').forEach(function(x){ x.classList.remove('open'); });
+  }
+});
+
+function renderSymList() {
+  var q = (document.getElementById('symSearch') || {}).value || '';
+  var el = document.getElementById('symList'); if (!el) return;
+  var html = '';
+  Object.keys(SYMS_META).filter(function(sym) {
+    var name = SYMS_META[sym];
+    return !q || name.indexOf(q) >= 0 || sym.indexOf(q) >= 0;
+  }).forEach(function(sym) {
+    var sel = _selSym === sym ? ' sel' : '';
+    html += '<div class="dd-row' + sel + '" onclick="selectSym(\'' + sym + '\')"><span>' + SYMS_META[sym] + ' (' + sym + ')</span></div>';
+  });
+  el.innerHTML = html || '<div style="padding:10px;color:#8b949e;font-size:11px">لا نتائج</div>';
+}
+
+function selectSym(sym) {
+  _selSym = sym;
+  document.getElementById('symLabel').textContent = SYMS_META[sym] + ' (' + sym + ')';
+  document.getElementById('symDD').classList.remove('open');
+  document.getElementById('runBtn').disabled = false;
+  document.getElementById('optBtn').disabled = false;
+  document.getElementById('statusBar').textContent = '✅ جاهز — اضغط تشغيل أو ابحث عن أمثل TP/SL';
+}
+
+function selectTF(tf, el) {
+  _selTF = tf;
+  var names = {daily:'يومي', weekly:'أسبوعي', monthly:'شهري'};
+  document.getElementById('tfLabel').textContent = names[tf] || tf;
+  document.querySelectorAll('#tfDD .tf-dd-item').forEach(function(x){
+    x.classList.remove('on');
+    x.innerHTML = x.innerHTML.replace('<span style="color:#58a6ff">✓</span>', '');
+  });
+  el.classList.add('on');
+  el.innerHTML += '<span style="color:#58a6ff">✓</span>';
+  document.getElementById('tfDD').classList.remove('open');
+}
+
+// ══════════════════════════════════════════════════════════════
+// دوال حساب المؤشرات (مستقلة — بدون global state)
+// ══════════════════════════════════════════════════════════════
+function ma(a, p) {
+  return a.map(function(_, i) {
+    if (i < p - 1) return null;
+    var s = 0; for (var j = i-p+1; j <= i; j++) s += a[j]; return s/p;
+  });
+}
+
+function calcRSI(c, p) {
+  p = p || 14;
+  var gains = 0, losses = 0;
+  for (var i = 1; i <= p; i++) {
+    var d = c[i] - c[i-1];
+    if (d > 0) gains += d; else losses -= d;
+  }
+  var ag = gains/p, al = losses/p;
+  var res = new Array(p).fill(50);
+  for (var i = p+1; i < c.length; i++) {
+    var d = c[i] - c[i-1];
+    var g = d > 0 ? d : 0, l = d < 0 ? -d : 0;
+    ag = (ag*(p-1)+g)/p; al = (al*(p-1)+l)/p;
+    res.push(al === 0 ? 100 : 100 - 100/(1 + ag/al));
+  }
+  return res;
+}
+
+function ema(a, p) {
+  var k = 2/(p+1), res = [];
+  a.forEach(function(v, i) { res.push(i === 0 ? v : v*k + res[i-1]*(1-k)); });
+  return res;
+}
+
+function calcMACD(c) {
+  var e12=ema(c,12), e26=ema(c,26);
+  var m=c.map(function(_,i){ return e12[i]-e26[i]; });
+  var s=ema(m,9);
+  var h=m.map(function(v,i){ return v-s[i]; });
+  return {m:m, s:s, h:h};
+}
+
+function calcStoch(hi, lo, cl, p) {
+  p = p || 14;
+  var k = cl.map(function(_, i) {
+    if (i < p-1) return 50;
+    var hh = Math.max.apply(null, hi.slice(i-p+1, i+1));
+    var ll = Math.min.apply(null, lo.slice(i-p+1, i+1));
+    return hh === ll ? 50 : (cl[i]-ll)/(hh-ll)*100;
+  });
+  var d = ma(k, 3).map(function(v){ return v===null?50:v; });
+  return {k:k, d:d};
+}
+
+function calcVolMult(data, L) {
+  if (L < 21) return {ratio:1, score:0};
+  var sum = 0;
+  for (var i = L-20; i < L; i++) sum += (data[i].vol || 0);
+  var avg = sum / 20;
+  if (avg === 0) return {ratio:1, score:0};
+  var ratio = (data[L].vol || 0) / avg;
+  var pchg = L > 0 ? (data[L].close - data[L-1].close) / data[L-1].close : 0;
+  var dir = pchg >= 0 ? 1 : -1;
+  var score;
+  if      (ratio >= 3)   score = 0;
+  else if (ratio >= 2)   score = dir * 80;
+  else if (ratio >= 1.5) score = dir * 50;
+  else if (ratio >= 0.5) score = dir * 15;
+  else                   score = dir * -40;
+  return {ratio:ratio, score:score};
+}
+
+// ── كشف الارتداد التاريخي (مطابق للنظام) ──────────────────
+function detectSmartBouncesBT(data) {
+  if (data.length < 20) return [];
+  var WIN_SIZE = 170;
+  var lastC = data[data.length-1].close;
+  var total = data.length;
+  var windows = [];
+  for (var s = 0; s < total; s += WIN_SIZE)
+    windows.push({ start:s, end:Math.min(s+WIN_SIZE, total) });
+  var clusters = {}, lb = 3;
+  windows.forEach(function(win, winIdx) {
+    for (var i = win.start+lb; i < win.end-lb; i++) {
+      var isH=true, isL=true;
+      for (var j=1;j<=lb;j++){
+        if(data[i-j].high>=data[i].high||data[i+j].high>=data[i].high) isH=false;
+        if(data[i-j].low<=data[i].low||data[i+j].low<=data[i].low)   isL=false;
+      }
+      if (!isH && !isL) continue;
+      var p = isH ? data[i].high : data[i].low;
+      var t = isH ? 'H' : 'L';
+      var key = null;
+      Object.keys(clusters).forEach(function(k){
+        if (Math.abs(clusters[k].p-p)/p < 0.015) key=k;
+      });
+      if (key) {
+        clusters[key].cnt++;
+        if (clusters[key].wins.indexOf(winIdx)<0) clusters[key].wins.push(winIdx);
+        if (t==='H') clusters[key].highs++; else clusters[key].lows++;
+        clusters[key].lastI = Math.max(clusters[key].lastI, i);
+      } else {
+        var k2=p.toFixed(3);
+        clusters[k2]={p:p,cnt:1,wins:[winIdx],highs:t==='H'?1:0,lows:t==='L'?1:0,lastI:i};
+      }
+    }
+  });
+  var levels = Object.values(clusters)
+    .filter(function(c){ return c.cnt>=2; })
+    .map(function(c){
+      c.stars=c.wins.length;
+      c.dist=Math.abs(c.p-lastC)/lastC;
+      return c;
+    })
+    .filter(function(c){ return c.dist>=0.01&&c.dist<=0.35; });
+  levels.sort(function(a,b){ return b.stars-a.stars||b.cnt-a.cnt; });
+  var filtered=[];
+  levels.forEach(function(l){
+    var close=filtered.some(function(f){ return Math.abs(f.p-l.p)/l.p<0.04; });
+    if(!close) filtered.push(l);
+  });
+  return filtered.slice(0,5);
+}
+
+// ── أنماط الشموع (مطابقة للنظام) ──────────────────────────
+function pat4BT(data, i) {
+  if (i < 1) return null;
+  var d=data[i], o=d.open, h=d.high, l=d.low, c=d.close;
+  var dp=data[i-1], op=dp.open, hp=dp.high, lp=dp.low, cp=dp.close;
+  var body=Math.abs(c-o), bodyP=Math.abs(cp-op);
+  var rng=h-l, uw=h-Math.max(o,c), lw=Math.min(o,c)-l;
+  if(rng>0&&body<rng*0.35&&lw>=body*2&&uw<=body*0.5) return{dir:1,sc:60};
+  if(rng>0&&body<rng*0.35&&uw>=body*2&&lw<=body*0.5) return{dir:1,sc:60};
+  var bigBear=cp<op&&bodyP>rng*0.4;
+  var piercing=c>o&&o<Math.min(op,cp)&&c>(Math.min(op,cp)+bodyP*0.5)&&c<Math.max(op,cp);
+  if(bigBear&&piercing) return{dir:1,sc:60};
+  var bigBull=cp>op&&bodyP>rng*0.4;
+  var darkCloud=c<o&&o>Math.max(op,cp)&&c<(Math.max(op,cp)-bodyP*0.5)&&c>Math.min(op,cp);
+  if(bigBull&&darkCloud) return{dir:-1,sc:-60};
+  if(rng>0&&body<rng*0.02&&rng>o*0.003) return{dir:0,sc:0};
+  return null;
+}
+
+// ── حساب bullPct كامل ومطابق للنظام الأصلي ─────────────────
+function computeBullPct(data, L) {
+  if (L < 30) return null;
+  var slice  = data.slice(0, L+1);
+  var closes = slice.map(function(d){ return d.close; });
+  var highs  = slice.map(function(d){ return d.high; });
+  var lows   = slice.map(function(d){ return d.low; });
+
+  var rsi   = calcRSI(closes, 14);
+  var stoch = calcStoch(highs, lows, closes, 14);
+  var md    = calcMACD(closes);
+  var ma5a  = ma(closes, 5);
+  var ma10a = ma(closes, 10);
+
+  var rv=rsi[L]||50, kv=stoch.k[L]||50, dv=stoch.d[L]||kv;
+  var mv=md.m[L]||0, sv=md.s[L]||0;
+  var m5=ma5a[L]||0, m10=ma10a[L]||0;
+  var prevK=stoch.k[L-1]||50, prevD=stoch.d[L-1]||50;
+  var prevM=md.m[L-1]||0, prevS=md.s[L-1]||0;
+  var pchg = L>0 ? (data[L].close-data[L-1].close)/data[L-1].close*100 : 0;
+
+  var inds=[], tot2=0;
+
+  // RSI
+  var rs;
+  if(rv<25)rs=85;else if(rv<35)rs=60;else if(rv<50)rs=20;
+  else if(rv<60)rs=-15;else if(rv<70)rs=-40;else if(rv<80)rs=-65;else rs=-85;
+  inds.push({sc:rs});
+
+  // Stoch
+  var ss, kAD=kv>dv, wkBD=prevK<=prevD;
+  if(kv<20)ss=80;
+  else if(kAD&&wkBD&&kv<50)ss=75;
+  else if(kAD&&kv<50)ss=40;
+  else if(kAD)ss=10;
+  else if(kv>80)ss=-80;
+  else if(!kAD&&prevK>=prevD&&kv>50)ss=-75;
+  else ss=-35;
+  inds.push({sc:ss});
+
+  // MACD
+  var ms, mCross=mv>sv&&prevM<=prevS, mDiv=mv<sv&&prevM>=prevS;
+  if(mCross&&mv<0)ms=80;
+  else if(mCross)ms=55;
+  else if(mv>sv&&mv>0)ms=35;
+  else if(mv>sv)ms=20;
+  else if(mDiv&&mv>0)ms=-80;
+  else if(mDiv)ms=-55;
+  else ms=-30;
+  inds.push({sc:ms});
+
+  // MA
+  var maDiff=m10>0?(m5-m10)/m10*100:0, mas;
+  if(maDiff>1.5)mas=80;else if(maDiff>0.3)mas=50;else if(maDiff>0)mas=20;
+  else if(maDiff>-0.3)mas=-20;else if(maDiff>-1.5)mas=-50;else mas=-80;
+  inds.push({sc:mas});
+
+  // نمط شمعة
+  var pat=pat4BT(slice, L);
+  var pas=pat?pat.sc:0;
+  inds.push({sc:pas});
+
+  // حجم
+  var vol=calcVolMult(data,L);
+  inds.push({sc:vol.score});
+
+  // ── الارتداد التاريخي ─────────────────────────────────────
+  var bounceScore=0;
+  try {
+    var bounces=detectSmartBouncesBT(slice);
+    var curC=data[L].close;
+    var prevC5=data[Math.max(0,L-5)].close;
+    var approachPct=0.03, confirmPct=0.04;
+    bounces.forEach(function(b){
+      var distPrev=Math.abs(prevC5-b.p)/b.p;
+      if(distPrev<=approachPct){
+        var move=(curC-prevC5)/prevC5;
+        if(move>=confirmPct) bounceScore=Math.min(150,50+b.cnt*10);
+        else if(move<=-confirmPct) bounceScore=Math.max(-80,-50-b.cnt*10);
+      }
+    });
+  } catch(e){}
+
+  // ── الأوزان — مطابق للنظام ───────────────────────────────
+  var wts=[0.154,0.154,0.154,0.168,0.07,0.10]; // RSI,Stoch,MACD,MA,نمط,حجم
+  var bounceWeight = bounceScore!==0 ? 0.25 : 0;
+  var techWeight   = bounceScore!==0 ? 0.45 : 0.70;
+  var adjustedWts  = wts.map(function(w,i){ return i<5?w*(techWeight/0.70):w; });
+  for(var i2=0;i2<Math.min(inds.length,adjustedWts.length);i2++)
+    tot2 += inds[i2].sc * adjustedWts[i2];
+  // FV وأخبار = صفر في الـ backtest (بيانات حالية مو تاريخية)
+  // وزنهم 20% يتوزع على التقني تلقائياً عبر techWeight
+  if(bounceScore!==0) tot2 += bounceScore*bounceWeight;
+
+  var bullPct=Math.round(50+tot2/2);
+  return Math.max(5,Math.min(95,bullPct));
+}
+
+// ══════════════════════════════════════════════════════════════
+// تجميع الشموع
+// ══════════════════════════════════════════════════════════════
+function aggregateBars(dailyRows, tf) {
+  if (tf === 'daily') return dailyRows;
+  var groups = {}, groupOrder = [];
+  dailyRows.forEach(function(d) {
+    var key;
+    if (tf === 'weekly') {
+      var dt = new Date(d.date);
+      var sun = new Date(dt);
+      sun.setDate(dt.getDate() - dt.getDay());
+      key = sun.toISOString().slice(0,10);
+    } else {
+      key = d.date.slice(0,7);
+    }
+    if (!groups[key]) { groups[key]=[]; groupOrder.push(key); }
+    groups[key].push(d);
+  });
+  return groupOrder.map(function(key) {
+    var g = groups[key];
+    return {
+      date:  g[0].date,
+      open:  g[0].open,
+      high:  g.reduce(function(m,b){ return Math.max(m,b.high); }, -Infinity),
+      low:   g.reduce(function(m,b){ return Math.min(m,b.low);  },  Infinity),
+      close: g[g.length-1].close,
+      vol:   g.reduce(function(s,b){ return s+(b.vol||0); }, 0)
+    };
+  });
+}
+
+// ── البحث عن الـ TP/SL الأمثل ────────────────────────────────
+async function runOptimal() {
+  if (!_selSym) return;
+  var minBull = parseInt(document.getElementById('minBull').value) || 60;
+  var maxDays = parseInt(document.getElementById('maxDays').value) || 14;
+  var TP_VALS = [3, 4, 5, 6, 7, 8, 10];
+  var SL_VALS = [3, 4, 5, 6, 7, 8];
+
+  document.getElementById('optBtn').disabled = true;
+  document.getElementById('runBtn').disabled = true;
+  document.getElementById('statusBar').textContent = '🔍 جاري البحث عن أفضل TP/SL...';
+  document.getElementById('progWrap').style.display = 'block';
+  document.getElementById('progBar').style.width = '5%';
+  document.getElementById('optSection').style.display = 'block';
+  document.getElementById('optGrid').innerHTML = '<div style="color:#8b949e;font-size:11px">⏳ جاري الحساب...</div>';
+
+  var toDate   = new Date().toISOString().slice(0,10);
+  var fromDate = new Date(Date.now()-520*24*3600*1000).toISOString().slice(0,10);
+  var raw = await sahmkFetch('/historical/'+_selSym+'/?interval=1d&from='+fromDate+'&to='+toDate);
+  if (!raw || !raw.data || raw.data.length < 40) {
+    document.getElementById('statusBar').textContent = '❌ فشل جلب البيانات';
+    document.getElementById('optBtn').disabled = false;
+    document.getElementById('runBtn').disabled = false;
+    return;
+  }
+  var dailyBars = raw.data.map(function(d){
+    return {date:d.date,open:parseFloat(d.open),high:parseFloat(d.high),low:parseFloat(d.low),
+            close:parseFloat(d.close||d.adjusted_close),vol:parseInt(d.volume||0)};
+  }).filter(function(d){ return !isNaN(d.close)&&d.close>0; });
+
+  var bars = aggregateBars(dailyBars, _selTF);
+  var START = 30;
+
+  // حساب bullPct مرة واحدة لكل نقطة — توفير الوقت
+  var sigs = [];
+  for (var i=START; i<bars.length-maxDays-1; i++) {
+    var bull = computeBullPct(bars, i);
+    if (bull===null || bull<minBull) continue;
+    sigs.push({i:i, bull:bull, entry:bars[i].close});
+  }
+  document.getElementById('progBar').style.width = '40%';
+
+  var results = [], done=0, total_c=TP_VALS.length*SL_VALS.length;
+  TP_VALS.forEach(function(tp) {
+    SL_VALS.forEach(function(sl) {
+      var tpR=tp/100, slR=sl/100, hits=0, slHits=0, tos=0;
+      sigs.forEach(function(sig) {
+        var tpP=sig.entry*(1+tpR), slP=sig.entry*(1-slR), out='timeout';
+        for (var j=sig.i+1; j<=Math.min(sig.i+maxDays,bars.length-1); j++) {
+          if (bars[j].high>=tpP) { out='tp'; break; }
+          if (bars[j].low <=slP) { out='sl'; break; }
+        }
+        if(out==='tp')hits++; else if(out==='sl')slHits++; else tos++;
+      });
+      var tot=sigs.length, hitPct=tot>0?hits/tot*100:0;
+      var avgL=tot>hits?(slHits*sl+tos*(sl*0.4))/(tot-hits):0;
+      var rr=avgL>0?tp/avgL:0;
+      var ev=(hitPct/100)*tp-(1-hitPct/100)*avgL;
+      results.push({tp:tp,sl:sl,hits:hits,slHits:slHits,tos:tos,tot:tot,hitPct:hitPct,rr:rr,ev:ev});
+      done++;
+      document.getElementById('progBar').style.width=Math.round(40+done/total_c*55)+'%';
+    });
+  });
+
+  results.sort(function(a,b){ return b.ev-a.ev; });
+  var best6=results.slice(0,6);
+  var html='';
+  best6.forEach(function(r,idx){
+    var hitCol=r.hitPct>=40?'#26a641':r.hitPct>=25?'#d29922':'#da3633';
+    var evCol=r.ev>0?'#26a641':r.ev>-1?'#d29922':'#da3633';
+    var bdr=idx===0?'border:2px solid #d29922;':'border:1px solid #21262d;';
+    html+='<div style="background:#0f1117;'+bdr+'border-radius:8px;padding:10px 12px;direction:rtl">';
+    if(idx===0)html+='<div style="font-size:9px;color:#d29922;font-weight:700;margin-bottom:4px">⭐ الأفضل</div>';
+    html+='<div style="display:flex;justify-content:space-between;margin-bottom:6px">';
+    html+='<span style="font-size:12px;color:#26a641;font-weight:700">TP '+r.tp+'%</span>';
+    html+='<span style="font-size:12px;color:#da3633;font-weight:700">SL '+r.sl+'%</span>';
+    html+='</div>';
+    html+='<div style="font-size:20px;font-weight:700;color:'+hitCol+';text-align:center;margin:4px 0">'+r.hitPct.toFixed(0)+'%</div>';
+    html+='<div style="font-size:9px;color:#8b949e;text-align:center;margin-bottom:6px">إصابة | R:R 1:'+r.rr.toFixed(1)+'</div>';
+    html+='<div style="display:flex;justify-content:space-between;font-size:9px;color:#4a5568">';
+    html+='<span>'+r.hits+' TP</span><span>'+r.slHits+' SL</span><span>'+r.tos+' مهلة</span>';
+    html+='</div>';
+    html+='<div style="font-size:11px;font-weight:700;color:'+evCol+';text-align:center;margin-top:5px;border-top:1px solid #21262d;padding-top:4px">';
+    html+='توقع: '+(r.ev>0?'+':'')+r.ev.toFixed(1)+'%</div>';
+    html+='</div>';
+  });
+  document.getElementById('optGrid').innerHTML=html;
+
+  // تطبيق الأفضل تلقائياً على القوائم
+  var best=best6[0];
+  if(best){
+    document.getElementById('tpPct').value=best.tp;
+    document.getElementById('slPct').value=best.sl;
+    document.getElementById('statusBar').textContent=
+      '✅ الأمثل: TP '+best.tp+'% / SL '+best.sl+'% — إصابة '+best.hitPct.toFixed(0)+'% — اضغط "تشغيل" للتفاصيل';
+  }
+  document.getElementById('progBar').style.width='100%';
+  document.getElementById('optBtn').disabled=false;
+  document.getElementById('runBtn').disabled=false;
+  setTimeout(function(){document.getElementById('progWrap').style.display='none';},500);
+}
+
+// ══════════════════════════════════════════════════════════════
+// تشغيل الاختبار الرئيسي
+// ══════════════════════════════════════════════════════════════
+async function runBacktest() {
+  if (!_selSym) return;
+
+  var minBull = parseInt(document.getElementById('minBull').value) || 60;
+  var DAYS_AHEAD = 14; // مهلة قصوى — تُستخدم من maxDays الآن
+
+  document.getElementById('runBtn').disabled = true;
+  document.getElementById('statusBar').textContent = '⏳ جاري جلب البيانات من Sahmk...';
+  document.getElementById('progWrap').style.display = 'block';
+  document.getElementById('progBar').style.width = '10%';
+
+  // جلب البيانات
+  var toDate   = new Date().toISOString().slice(0,10);
+  var fromDate = new Date(Date.now()-520*24*3600*1000).toISOString().slice(0,10);
+  var raw = await sahmkFetch('/historical/'+_selSym+'/?interval=1d&from='+fromDate+'&to='+toDate);
+
+  if (!raw || !raw.data || raw.data.length < 40) {
+    document.getElementById('statusBar').textContent = '❌ فشل جلب البيانات — تحقق من الاتصال أو اختر شركة أخرى';
+    document.getElementById('runBtn').disabled = false;
+    document.getElementById('progWrap').style.display = 'none';
+    return;
+  }
+
+  document.getElementById('progBar').style.width = '30%';
+  document.getElementById('statusBar').textContent = '⚙️ جاري تحليل ' + raw.data.length + ' شمعة...';
+
+  // تحويل البيانات
+  var dailyBars = raw.data.map(function(d) {
+    return {
+      date:  d.date,
+      open:  parseFloat(d.open),
+      high:  parseFloat(d.high),
+      low:   parseFloat(d.low),
+      close: parseFloat(d.close || d.adjusted_close),
+      vol:   parseInt(d.volume || 0)
+    };
+  }).filter(function(d){ return !isNaN(d.close) && d.close > 0; });
+
+  // تجميع حسب الإطار
+  var bars = aggregateBars(dailyBars, _selTF);
+
+  document.getElementById('progBar').style.width = '50%';
+
+  // ── إعدادات TP/SL ─────────────────────────────────────────
+  var tpPct  = parseFloat(document.getElementById('tpPct').value)  / 100;
+  var slPct  = parseFloat(document.getElementById('slPct').value)  / 100;
+  var maxDays= parseInt(document.getElementById('maxDays').value) || 14;
+
+  // ── حلقة الاختبار — TP vs SL ────────────────────────────
+  var signals = [];
+  var START = 30;
+
+  for (var i = START; i < bars.length - maxDays - 1; i++) {
+    var bull = computeBullPct(bars, i);
+    if (bull === null) continue;
+    if (bull < minBull) continue;
+
+    var entryPrice = bars[i].close;
+    var tpPrice    = entryPrice * (1 + tpPct);
+    var slPrice    = entryPrice * (1 - slPct);
+
+    // تتبع السعر يوماً بيوم حتى TP أو SL أو انتهاء المهلة
+    var outcome = 'timeout'; // tp / sl / timeout
+    var exitPrice = entryPrice;
+    var exitDay = maxDays;
+
+    for (var j = i+1; j <= Math.min(i+maxDays, bars.length-1); j++) {
+      var dayHigh = bars[j].high;
+      var dayLow  = bars[j].low;
+
+      if (dayHigh >= tpPrice) {
+        outcome   = 'tp';
+        exitPrice = tpPrice;
+        exitDay   = j - i;
+        break;
+      }
+      if (dayLow <= slPrice) {
+        outcome   = 'sl';
+        exitPrice = slPrice;
+        exitDay   = j - i;
+        break;
+      }
+    }
+
+    // timeout = نأخذ آخر سعر
+    if (outcome === 'timeout') {
+      exitPrice = bars[Math.min(i+maxDays, bars.length-1)].close;
+    }
+
+    var change = (exitPrice - entryPrice) / entryPrice * 100;
+    var isHit  = outcome === 'tp';
+
+    signals.push({
+      date:      bars[i].date,
+      bullPct:   bull,
+      entry:     entryPrice,
+      exit:      exitPrice,
+      change:    change,
+      hit:       isHit,
+      outcome:   outcome,
+      exitDay:   exitDay
+    });
+  }
+
+  document.getElementById('progBar').style.width = '80%';
+
+  // ── حساب الإحصائيات ─────────────────────────────────────
+  var total  = signals.length;
+  var hits   = signals.filter(function(s){ return s.hit; }).length;
+  var misses = total - hits;
+  var hitRate = total > 0 ? (hits/total*100) : 0;
+
+  var tpHits    = signals.filter(function(s){ return s.outcome==='tp'; }).length;
+  var slHits    = signals.filter(function(s){ return s.outcome==='sl'; }).length;
+  var timeouts  = signals.filter(function(s){ return s.outcome==='timeout'; }).length;
+  var profits  = signals.filter(function(s){ return s.hit; }).map(function(s){ return s.change; });
+  var losses   = signals.filter(function(s){ return !s.hit; }).map(function(s){ return Math.abs(s.change); });
+  var avgProfit = profits.length > 0 ? profits.reduce(function(a,b){return a+b;},0)/profits.length : 0;
+  var avgLoss   = losses.length  > 0 ? losses.reduce(function(a,b){return a+b;},0)/losses.length   : 0;
+  var rr        = avgLoss > 0 ? avgProfit / avgLoss : 0;
+
+  // ── توزيع حسب bullPct ────────────────────────────────────
+  var buckets = [
+    {lbl:'55-60%', min:55, max:60, hits:0, total:0},
+    {lbl:'60-65%', min:60, max:65, hits:0, total:0},
+    {lbl:'65-70%', min:65, max:70, hits:0, total:0},
+    {lbl:'70-75%', min:70, max:75, hits:0, total:0},
+    {lbl:'75%+',   min:75, max:100,hits:0, total:0},
+  ];
+  signals.forEach(function(s) {
+    buckets.forEach(function(b) {
+      if (s.bullPct >= b.min && s.bullPct < b.max) {
+        b.total++; if (s.hit) b.hits++;
+      }
+    });
+  });
+
+  document.getElementById('progBar').style.width = '100%';
+
+  // ══════════════════════════════════════════════════════════
+  // عرض النتائج
+  // ══════════════════════════════════════════════════════════
+  updateMetrics(total, hits, hitRate, avgProfit, avgLoss, rr, tpHits, slHits, timeouts);
+  try { renderDistChart(buckets); } catch(e) { console.warn("chart err", e); }
+  try { renderTable(signals); } catch(e) { console.warn("table err", e); }
+
+  var tfNames = {daily:'اليومي', weekly:'الأسبوعي', monthly:'الشهري'};
+  document.getElementById('statusBar').textContent =
+    '✅ اكتمل — ' + total + ' إشارة | TP ' + tpPct*100 + '% / SL ' + slPct*100 + '%' +
+    ' | إصابة: ' + hitRate.toFixed(1) + '% | R:R: 1:' + rr.toFixed(1);
+  document.getElementById('hdrNote').textContent =
+    SYMS_META[_selSym] + ' — ' + (tfNames[_selTF]||_selTF);
+
+  document.getElementById('runBtn').disabled = false;
+  setTimeout(function(){ document.getElementById('progWrap').style.display='none'; }, 800);
+}
+
+function updateMetrics(total, hits, hitRate, avgProfit, avgLoss, rr, tpHits, slHits, timeouts) {
+  var misses = total - hits;
+
+  var mHit = document.getElementById('mHit');
+  mHit.textContent = hitRate.toFixed(1) + '%';
+  mHit.className = 'mv ' + (hitRate >= 60 ? 'G' : hitRate >= 50 ? 'Y' : 'R');
+
+  document.getElementById('mTotal').textContent = total;
+  document.getElementById('mTotal').className = 'mv M';
+  document.getElementById('mHitSub').textContent = (tpHits||0)+' TP / '+(slHits||0)+' SL / '+(timeouts||0)+' timeout';
+
+  var mP = document.getElementById('mProfit');
+  mP.textContent = avgProfit > 0 ? '+' + avgProfit.toFixed(2) + '%' : '--';
+  mP.className = 'mv G';
+  var ps = document.getElementById('mProfitSub');
+  if(ps) ps.textContent = 'عند وصول TP';
+
+  var mL = document.getElementById('mLoss');
+  mL.textContent = avgLoss > 0 ? '-' + avgLoss.toFixed(2) + '%' : '--';
+  mL.className = 'mv R';
+  var ls = document.getElementById('mLossSub');
+  if(ls) ls.textContent = 'عند ضرب SL أو انتهاء المهلة';
+
+  var mRR = document.getElementById('mRR');
+  mRR.textContent = rr > 0 ? '1 : ' + rr.toFixed(1) : '--';
+  mRR.className = 'mv ' + (rr >= 1.5 ? 'G' : rr >= 1 ? 'Y' : 'R');
+}
+
+function renderDistChart(buckets) {
+  var maxTotal = Math.max.apply(null, buckets.map(function(b){ return b.total; })) || 1;
+  var html = '';
+  buckets.forEach(function(b) {
+    var pct = b.total > 0 ? (b.hits/b.total*100) : 0;
+    var h   = Math.round((b.total/maxTotal) * 90);
+    var col = pct >= 70 ? '#26a641' : pct >= 50 ? '#378ADD' : '#da3633';
+    html += '<div class="bar-col">' +
+      '<div class="bar-pct" style="color:'+col+'">' + (b.total>0?pct.toFixed(0)+'%':'') + '</div>' +
+      '<div class="bar-fill" style="height:'+h+'px;background:'+col+'"></div>' +
+      '<div class="bar-lbl">' + b.lbl + '</div>' +
+      '<div class="bar-lbl" style="color:#4a5568">' + (b.total>0?b.total+'إشارة':'') + '</div>' +
+      '</div>';
+  });
+  document.getElementById('distChart').innerHTML = html || '<div class="empty">لا بيانات</div>';
+}
+
+function renderTable(signals) {
+  if (!signals.length) {
+    document.getElementById('tblWrap').innerHTML = '<div class="empty">لا توجد إشارات بالحد المختار</div>';
+    return;
+  }
+  // آخر 50 إشارة
+  var show = signals.slice(-50).reverse();
+  var html = '<table>' +
+    '<tr><th>التاريخ</th><th>bullPct</th><th>سعر الدخول</th><th>سعر الخروج</th><th>التغير %</th><th>اليوم</th><th>النتيجة</th></tr>';
+  show.forEach(function(s) {
+    var chgStr = (s.change >= 0 ? '+' : '') + s.change.toFixed(2) + '%';
+    var chgCls = s.change >= 0 ? 'G' : 'R';
+    var bPctCol = s.bullPct >= 70 ? '#26a641' : s.bullPct >= 60 ? '#378ADD' : '#d29922';
+    var outLbl = s.outcome==='tp' ? '<span class="G">✅ TP</span>' :
+                   s.outcome==='sl' ? '<span class="R">❌ SL</span>' :
+                   '<span class="Y">⏱ مهلة</span>';
+    html += '<tr>' +
+      '<td class="M">' + s.date + '</td>' +
+      '<td style="color:'+bPctCol+';font-weight:700">' + s.bullPct + '%</td>' +
+      '<td class="M">' + s.entry.toFixed(2) + '</td>' +
+      '<td class="M">' + s.exit.toFixed(2) + '</td>' +
+      '<td class="' + chgCls + '">' + chgStr + '</td>' +
+      '<td class="M">' + s.exitDay + '</td>' +
+      '<td>' + outLbl + '</td>' +
+      '</tr>';
+  });
+  html += '</table>';
+  if (signals.length > 50) {
+    html += '<div style="text-align:center;padding:8px;font-size:10px;color:#8b949e">يعرض آخر 50 إشارة من ' + signals.length + '</div>';
+  }
+  document.getElementById('tblWrap').innerHTML = html;
+}
+
+// ══════════════════════════════════════════════════════════════
+// تشغيل أولي
+// ══════════════════════════════════════════════════════════════
+window.addEventListener('load', function() {
+  loadSymbols();
+});
+</script>
+</body>
+</html>
